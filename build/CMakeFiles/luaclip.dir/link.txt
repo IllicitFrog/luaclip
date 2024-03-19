@@ -1,0 +1,1 @@
+/usr/bin/clang++ -fPIC -shared -Wl,-soname,libluaclip.so -o libluaclip.so CMakeFiles/luaclip.dir/src/buffer.cpp.o CMakeFiles/luaclip.dir/src/luaclip.cpp.o  /usr/lib/liblua5.4.so -lm -lglib-2.0 

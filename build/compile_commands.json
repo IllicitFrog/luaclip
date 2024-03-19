@@ -1,0 +1,14 @@
+[
+{
+  "directory": "/home/cory/Workspace/luaclip/build",
+  "command": "/usr/bin/clang++ -Dluaclip_EXPORTS -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include -I/usr/include/sysprof-6 -I/home/cory/Workspace/luaclip/include -std=gnu++17 -fPIC -o CMakeFiles/luaclip.dir/src/buffer.cpp.o -c /home/cory/Workspace/luaclip/src/buffer.cpp",
+  "file": "/home/cory/Workspace/luaclip/src/buffer.cpp",
+  "output": "CMakeFiles/luaclip.dir/src/buffer.cpp.o"
+},
+{
+  "directory": "/home/cory/Workspace/luaclip/build",
+  "command": "/usr/bin/clang++ -Dluaclip_EXPORTS -I/usr/include/glib-2.0 -I/usr/lib/glib-2.0/include -I/usr/include/sysprof-6 -I/home/cory/Workspace/luaclip/include -std=gnu++17 -fPIC -o CMakeFiles/luaclip.dir/src/luaclip.cpp.o -c /home/cory/Workspace/luaclip/src/luaclip.cpp",
+  "file": "/home/cory/Workspace/luaclip/src/luaclip.cpp",
+  "output": "CMakeFiles/luaclip.dir/src/luaclip.cpp.o"
+}
+]
