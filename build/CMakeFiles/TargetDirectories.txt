@@ -1,3 +1,0 @@
-/home/cory/Workspace/luaclip/build/CMakeFiles/luaclip.dir
-/home/cory/Workspace/luaclip/build/CMakeFiles/edit_cache.dir
-/home/cory/Workspace/luaclip/build/CMakeFiles/rebuild_cache.dir
