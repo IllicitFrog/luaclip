@@ -8,7 +8,8 @@ set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(PkgConfig REQUIRED)
 find_package(Lua REQUIRED)
-find_package(Boost REQUIRED COMPONENTS filesystem)
+find_package(Threads REQUIRED)
+find_package(X11 REQUIRED)
 
 pkg_search_module(GLIB REQUIRED glib-2.0)
 
@@ -18,4 +19,4 @@ include_directories(include)
 
 add_library(luaclip SHARED src/buffer.cpp src/luaclip.cpp )
 
-target_link_libraries(luaclip ${LUA_LIBRARIES} ${GLIB_LIBRARIES})
+target_link_libraries(luaclip ${LUA_LIBRARIES} ${GLIB_LIBRARIES} ${X11_LIBRARIES} ${XFIXES_LIBRARIES} Xfixes Threads::Threads)

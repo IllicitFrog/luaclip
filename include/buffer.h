@@ -1,32 +1,30 @@
 #ifndef BUFFER_H
 #define BUFFER_H
 
-#include <boost/algorithm/string.hpp>
-#include <boost/serialization/string.hpp>
-#include <boost/archive/binary_iarchive.hpp>
-#include <boost/archive/binary_oarchive.hpp>
 #include <array>
 #include <string>
+#include <mutex>
+#include <stdio.h>
+
+typedef struct clip {
+  unsigned int size;
+  char data[4092] = {0};
+}clip;
 
 class buffer_t {
 public:
   buffer_t();
-  buffer_t(const buffer_t& rhs);
   ~buffer_t();
 
   void insert(const std::string &str);
   std::array<std::string, 5> search(const std::string &str);
+  std::array<std::string, 5> recent();
 
 private:
-  friend class boost::serialization::access;
-  std::array<std::string, 100> _buffer;
-  size_t _index;
-  bool _full;
-
-  template <class Archive>
-  void serialize(Archive &ar, const unsigned int version) {
-    ar & _buffer;
-    ar & _index;
-  }
+  clip _buffer[100];
+  unsigned int _index;
+  std::string home;
+  std::mutex _mutex;
+  FILE *history;
 };
 #endif

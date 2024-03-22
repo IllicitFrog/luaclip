@@ -1,148 +1,141 @@
 #include "luaclip.h"
-#include <mutex>
-#include <thread>
+#include <X11/extensions/Xfixes.h>
 
-luaclip::luaclip(lua_State *Lua) : L(Lua) {}
+luaclip::luaclip(lua_State *Lua) : L(Lua), running(true) {
+  display = XOpenDisplay(NULL);
+  if (!display) {
+    lc_error *e = new lc_error{L, "XOpenDisplay failed"};
+    sendError(e);
+  }
 
-luaclip::~luaclip() { file.close(); }
+  int N = DefaultScreen(display);
+  window = XCreateSimpleWindow(display, RootWindow(display, N), 0, 0, 1, 1, 0,
+                               BlackPixel(display, N), WhitePixel(display, N));
+}
+
+luaclip::~luaclip() {
+  running = false;
+  owned = false;
+  XClientMessageEvent dummyEvent;
+  memset(&dummyEvent, 0, sizeof(XClientMessageEvent));
+  dummyEvent.type = ClientMessage;
+  dummyEvent.window = window;
+  dummyEvent.format = 32;
+  XSendEvent(display, window, 0, 0, (XEvent *)&dummyEvent);
+  XFlush(display);
+  t.join();
+}
 
 // Start main clipboard loop
-void luaclip::daemon() {
-  display = XOpenDisplay(nullptr);
-
-  if (!display) {
-    sendError(new la_error{L, "XOpenDisplay failed"});
-    return;
-  }
-
-  selection = XInternAtom(display, "CLIPBOARD", False);
-  int N = DefaultScreen(display);
-  Window window =
-      XCreateSimpleWindow(display, RootWindow(display, N), 0, 0, 1, 1, 0,
-                          BlackPixel(display, N), WhitePixel(display, N));
-  std::thread t = std::thread(&luaclip::run, this);
-}
-
-// Load clipboard history from disk
-void luaclip::loadBuffer() {
-  boost::filesystem::path path =
-      strcat(getenv("HOME"), "/.config/luaclip/buffer.data");
-  if (!boost::filesystem::exists(path.parent_path())) {
-    boost::filesystem::create_directories(path);
-    file.open(path,
-              std::fstream::in | std::fstream::out | std::fstream::binary);
-  } else {
-    file.open(path,
-              std::fstream::in | std::fstream::out | std::fstream::binary);
-    boost::archive::binary_iarchive iarchive(file);
-    iarchive >> clipboard;
-  }
-}
-
-// Write cliboard history to disk
-void luaclip::writeBuffer() {
-  boost::archive::binary_oarchive oarchive(file);
-  oarchive << clipboard;
-}
+void luaclip::daemon() { t = std::thread(&luaclip::run, this); }
 
 // Search clipboard history and return up to five results
-void luaclip::search(const std::string &str) {
-  clip *c = new clip(clipboard.search(str), L);
+void luaclip::search(std::string str) {
+  std::array<std::string, 5> ret = clipboard.search(str);
+  lc_clip *c = new lc_clip{L, ret[0], ret[1], ret[2], ret[3], ret[4]};
+  sendClip(c);
+}
+
+void luaclip::recent() {
+  std::array<std::string, 5> ret = clipboard.recent();
+  lc_clip *c = new lc_clip{L, ret[0], ret[1], ret[2], ret[3], ret[4]};
   sendClip(c);
 }
 
 // Take ownership of clipboard share current string
 void luaclip::select(std::string str) {
+  Atom selection = XInternAtom(display, "CLIPBOARD", False);
+  clipboard.insert(str);
+  current = str;
   XSetSelectionOwner(display, selection, window, CurrentTime);
-  if (XGetSelectionOwner(display, selection) == window) {
-    current = str;
-    isOwner = true;
-  }
 }
 
 // Main X11 clipboard loop
 void luaclip::run() {
+  XEvent event = {0};
+  int event_base, error_base;
 
-  XEvent event;
-  XSelectionEvent ev;
-  XSelectionRequestEvent *xsr;
-  int format;
-  int req;
-  char *data;
-  unsigned long n, size;
-
-  std::mutex io_mutex;
-
-  Atom target;
   Atom UTF8 = XInternAtom(display, "UTF8_STRING", True);
   Atom XSEL_DATA = XInternAtom(display, "XSEL_DATA", False);
   Atom targets = XInternAtom(display, "TARGETS", False);
   Atom text = XInternAtom(display, "TEXT", False);
-  if (UTF8 == None) {
-    UTF8 = XA_STRING;
-  }
+  Atom selection = XInternAtom(display, "CLIPBOARD", False);
 
-  while (true) {
+  XFixesQueryExtension(display, &event_base, &error_base);
+
+  XFixesSelectSelectionInput(display, DefaultRootWindow(display), selection,
+                             XFixesSetSelectionOwnerNotifyMask);
+
+  while (running) {
     XNextEvent(display, &event);
-    switch (event.type) {
-    case SelectionRequest: {
-      if (isOwner) {
-        if (event.xselectionrequest.selection != selection) {
-          break;
-        }
-        xsr = &event.xselectionrequest;
-        ev = {0};
-        req = 0;
-        ev.type = SelectionNotify;
-        ev.display = xsr->display;
-        ev.requestor = xsr->requestor;
-        ev.selection = xsr->selection;
-        ev.time = xsr->time;
-        ev.target = xsr->target;
-        ev.property = xsr->property;
-        if (ev.target == targets) {
-          req = XChangeProperty(ev.display, ev.requestor, ev.property, XA_ATOM,
-                                32, PropModeReplace, (unsigned char *)&UTF8, 1);
-        } else if (ev.target == text || ev.target == XA_STRING) {
-          req = XChangeProperty(ev.display, ev.requestor, ev.property,
-                                XA_STRING, 8, PropModeReplace,
-                                (unsigned char *)current.c_str(),
-                                (int)current.size());
-        } else if (ev.target == UTF8) {
-          req = XChangeProperty(
-              ev.display, ev.requestor, ev.property, UTF8, 8, PropModeReplace,
-              (unsigned char *)current.c_str(), (int)current.size());
-        } else {
-          ev.property = None;
-          if ((req & 2) == 8)
-            XSendEvent(display, ev.requestor, 0, 0, (XEvent *)&ev);
-        }
-      }
-      break;
-    }
-    case SelectionNotify:
-      if (event.xselection.selection == selection) {
-        if (event.xselection.property) {
-          XGetWindowProperty(
-              event.xselection.display, event.xselection.requestor,
-              event.xselection.property, 0, LONG_MAX, False, AnyPropertyType,
-              &target, &format, &size, &n, (unsigned char **)&data);
-          if (target == UTF8 || target == XA_STRING) {
-            std::lock_guard<std::mutex> _(io_mutex);
-            clipboard.insert(std::string(data, size));
-            writeBuffer();
+    if (event.type == event_base + XFixesSelectionNotify &&
+        ((XFixesSelectionNotifyEvent *)&event)->selection == selection) {
+      if (XGetSelectionOwner(display, selection) == window) {
+        owned = true;
+        while (owned) {
+          XNextEvent(display, &event);
+          if (event.type == SelectionRequest) {
+            XSelectionEvent ev = {0};
+            int req = 0;
+            ev.type = SelectionNotify;
+            ev.display = event.xselectionrequest.display;
+            ev.requestor = event.xselectionrequest.requestor;
+            ev.selection = event.xselectionrequest.selection;
+            ev.time = event.xselectionrequest.time;
+            ev.target = event.xselectionrequest.target;
+            ev.property = event.xselectionrequest.property;
+
+            if (ev.target == targets) {
+              req = XChangeProperty(ev.display, ev.requestor, ev.property,
+                                    XA_ATOM, 32, PropModeReplace,
+                                    (unsigned char *)&UTF8, 1);
+            } else if (ev.target == text || ev.target == XA_STRING) {
+              req = XChangeProperty(ev.display, ev.requestor, ev.property,
+                                    XA_STRING, 8, PropModeReplace,
+                                    (unsigned char *)current.c_str(),
+                                    current.length());
+            } else if (ev.target == UTF8) {
+              req = XChangeProperty(ev.display, ev.requestor, ev.property, UTF8,
+                                    8, PropModeReplace,
+                                    (unsigned char *)current.c_str(),
+                                    current.length());
+            } else {
+              ev.property = None;
+            }
+            if ((req & 2) == 0) {
+              XSendEvent(display, ev.requestor, 0, 0, (XEvent *)&ev);
+            }
+          } else if (event.type == SelectionClear) {
+            owned = false;
           }
-          XDeleteProperty(display, event.xselection.requestor,
-                          event.xselection.property);
+        }
+      } else {
+        Atom target;
+        char *data;
+        int format;
+        unsigned long n, size;
+        XConvertSelection(display, selection, UTF8, XSEL_DATA, window,
+                          CurrentTime);
+        XSync(display, False);
+        XNextEvent(display, &event);
+        if (event.type == SelectionNotify &&
+            event.xselection.selection == selection) {
+          if (event.xselection.property) {
+            XGetWindowProperty(
+                event.xselection.display, event.xselection.requestor,
+                event.xselection.property, 0L, (~0L), 0, AnyPropertyType,
+                &target, &format, &size, &n, (unsigned char **)&data);
+            if (target == UTF8 || target == XA_STRING) {
+              // sloppyfix will deal with this
+              if (size > 4092)
+                size = 4092;
+              clipboard.insert(std::string(data, size));
+            }
+            XDeleteProperty(display, event.xselection.requestor,
+                            event.xselection.property);
+          }
         }
       }
-      break;
-    case SelectionClear:
-      if (event.xselectionclear.display == display) {
-        isOwner = false;
-        current = "";
-      }
-      break;
     }
   }
 }
@@ -170,6 +163,11 @@ static int luaclip_search(lua_State *L) {
   return 0;
 }
 
+static int luaclip_recent(lua_State *L) {
+  (*reinterpret_cast<luaclip **>(luaL_checkudata(L, 1, LUA_CLIP)))->recent();
+  return 0;
+}
+
 static int luaclip_select(lua_State *L) {
   (*reinterpret_cast<luaclip **>(luaL_checkudata(L, 1, LUA_CLIP)))
       ->select(luaL_checkstring(L, 2));
@@ -184,6 +182,7 @@ static void register_clipboard(lua_State *L) {
 
   static const luaL_Reg funcs[] = {
       {"search", luaclip_search},
+      {"recent", luaclip_recent},
       {"daemon", luaclip_daemon},
       {"select", luaclip_select},
       {NULL, NULL},
