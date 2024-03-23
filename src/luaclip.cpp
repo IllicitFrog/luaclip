@@ -16,13 +16,6 @@ luaclip::luaclip(lua_State *Lua) : L(Lua), running(true) {
 luaclip::~luaclip() {
   running = false;
   owned = false;
-  XClientMessageEvent dummyEvent;
-  memset(&dummyEvent, 0, sizeof(XClientMessageEvent));
-  dummyEvent.type = ClientMessage;
-  dummyEvent.window = window;
-  dummyEvent.format = 32;
-  XSendEvent(display, window, 0, 0, (XEvent *)&dummyEvent);
-  XFlush(display);
   t.join();
 }
 
@@ -67,76 +60,84 @@ void luaclip::run() {
                              XFixesSetSelectionOwnerNotifyMask);
 
   while (running) {
-    XNextEvent(display, &event);
-    if (event.type == event_base + XFixesSelectionNotify &&
-        ((XFixesSelectionNotifyEvent *)&event)->selection == selection) {
-      if (XGetSelectionOwner(display, selection) == window) {
-        owned = true;
-        while (owned) {
-          XNextEvent(display, &event);
-          if (event.type == SelectionRequest) {
-            XSelectionEvent ev = {0};
-            int req = 0;
-            ev.type = SelectionNotify;
-            ev.display = event.xselectionrequest.display;
-            ev.requestor = event.xselectionrequest.requestor;
-            ev.selection = event.xselectionrequest.selection;
-            ev.time = event.xselectionrequest.time;
-            ev.target = event.xselectionrequest.target;
-            ev.property = event.xselectionrequest.property;
+    if (XPending(display)) {
+      XNextEvent(display, &event);
+      if (event.type == event_base + XFixesSelectionNotify &&
+          ((XFixesSelectionNotifyEvent *)&event)->selection == selection) {
+        if (XGetSelectionOwner(display, selection) == window) {
+          owned = true;
+          while (owned) {
+            if (XPending(display)) {
+              while (XPending(display)) {
+                XNextEvent(display, &event);
+                if (event.type == SelectionRequest) {
+                  XSelectionEvent ev = {0};
+                  int req = 0;
+                  ev.type = SelectionNotify;
+                  ev.display = event.xselectionrequest.display;
+                  ev.requestor = event.xselectionrequest.requestor;
+                  ev.selection = event.xselectionrequest.selection;
+                  ev.time = event.xselectionrequest.time;
+                  ev.target = event.xselectionrequest.target;
+                  ev.property = event.xselectionrequest.property;
 
-            if (ev.target == targets) {
-              req = XChangeProperty(ev.display, ev.requestor, ev.property,
-                                    XA_ATOM, 32, PropModeReplace,
-                                    (unsigned char *)&UTF8, 1);
-            } else if (ev.target == text || ev.target == XA_STRING) {
-              req = XChangeProperty(ev.display, ev.requestor, ev.property,
-                                    XA_STRING, 8, PropModeReplace,
-                                    (unsigned char *)current.c_str(),
-                                    current.length());
-            } else if (ev.target == UTF8) {
-              req = XChangeProperty(ev.display, ev.requestor, ev.property, UTF8,
-                                    8, PropModeReplace,
-                                    (unsigned char *)current.c_str(),
-                                    current.length());
-            } else {
-              ev.property = None;
+                  if (ev.target == targets) {
+                    req = XChangeProperty(ev.display, ev.requestor, ev.property,
+                                          XA_ATOM, 32, PropModeReplace,
+                                          (unsigned char *)&UTF8, 1);
+                  } else if (ev.target == text || ev.target == XA_STRING) {
+                    req = XChangeProperty(ev.display, ev.requestor, ev.property,
+                                          XA_STRING, 8, PropModeReplace,
+                                          (unsigned char *)current.c_str(),
+                                          current.length());
+                  } else if (ev.target == UTF8) {
+                    req = XChangeProperty(ev.display, ev.requestor, ev.property,
+                                          UTF8, 8, PropModeReplace,
+                                          (unsigned char *)current.c_str(),
+                                          current.length());
+                  } else {
+                    ev.property = None;
+                  }
+                  if ((req & 2) == 0) {
+                    XSendEvent(display, ev.requestor, 0, 0, (XEvent *)&ev);
+                  }
+                } else if (event.type == SelectionClear) {
+                  owned = false;
+                }
+              }
             }
-            if ((req & 2) == 0) {
-              XSendEvent(display, ev.requestor, 0, 0, (XEvent *)&ev);
-            }
-          } else if (event.type == SelectionClear) {
-            owned = false;
+            std::this_thread::sleep_for(std::chrono::milliseconds(25));
           }
-        }
-      } else {
-        Atom target;
-        char *data;
-        int format;
-        unsigned long n, size;
-        XConvertSelection(display, selection, UTF8, XSEL_DATA, window,
-                          CurrentTime);
-        XSync(display, False);
-        XNextEvent(display, &event);
-        if (event.type == SelectionNotify &&
-            event.xselection.selection == selection) {
-          if (event.xselection.property) {
-            XGetWindowProperty(
-                event.xselection.display, event.xselection.requestor,
-                event.xselection.property, 0L, (~0L), 0, AnyPropertyType,
-                &target, &format, &size, &n, (unsigned char **)&data);
-            if (target == UTF8 || target == XA_STRING) {
-              // sloppyfix will deal with this
-              if (size > 4092)
-                size = 4092;
-              clipboard.insert(std::string(data, size));
+        } else {
+          Atom target;
+          char *data;
+          int format;
+          unsigned long n, size;
+          XConvertSelection(display, selection, UTF8, XSEL_DATA, window,
+                            CurrentTime);
+          XSync(display, False);
+          XNextEvent(display, &event);
+          if (event.type == SelectionNotify &&
+              event.xselection.selection == selection) {
+            if (event.xselection.property) {
+              XGetWindowProperty(
+                  event.xselection.display, event.xselection.requestor,
+                  event.xselection.property, 0L, (~0L), 0, AnyPropertyType,
+                  &target, &format, &size, &n, (unsigned char **)&data);
+              if (target == UTF8 || target == XA_STRING) {
+                // sloppyfix will deal with this
+                if (size > 4092)
+                  size = 4092;
+                clipboard.insert(std::string(data, size));
+              }
+              XDeleteProperty(display, event.xselection.requestor,
+                              event.xselection.property);
             }
-            XDeleteProperty(display, event.xselection.requestor,
-                            event.xselection.property);
           }
         }
       }
     }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 }
 
