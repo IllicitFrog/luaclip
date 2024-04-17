@@ -7,7 +7,7 @@
 #include <stdio.h>
 
 typedef struct clip {
-  unsigned int size;
+  unsigned int size = 0;
   char data[4092] = {0};
 }clip;
 
