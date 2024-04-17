@@ -34,7 +34,8 @@ std::array<std::string, 5> buffer_t::search(const std::string &str) {
   unsigned int index = _index;
   int i = 0;
   while (index != _index + 1) {
-    if (strstr(std::string(_buffer[index].data, _buffer[index].size).c_str(), str.c_str())) {
+    if (strstr(std::string(_buffer[index].data, _buffer[index].size).c_str(),
+               str.c_str())) {
       ret[i] = std::string(_buffer[index].data, _buffer[index].size);
       i++;
       if (i == 5)
@@ -45,16 +46,33 @@ std::array<std::string, 5> buffer_t::search(const std::string &str) {
   return ret;
 }
 
-void buffer_t::insert(const std::string &str) {
+void buffer_t::insert(std::string &str) {
   (_index >= 99) ? _index = 0 : _index++;
 
-  std::unique_lock<std::mutex> lock(_mutex);
+  if (str.size() > 4092) {
+    str.resize(4092);
+  }
+  std::lock_guard<std::mutex> lock(_mutex);
   strncpy(_buffer[_index].data, str.c_str(), str.size());
   _buffer[_index].size = str.size();
-  lock.unlock();
 
   fseek(history, 0, SEEK_SET);
   fwrite(&_index, sizeof(_index), 1, history);
   fseek(history, _index * 4096 + sizeof(_index), SEEK_SET);
   fwrite(&_buffer[_index], 4096, 1, history);
+}
+
+void buffer_t::remove(std::string &str) {
+  unsigned int index = _index;
+  while (index != _index + 1) {
+    if (str == std::string(_buffer[index].data, _buffer[index].size)) {
+      std::lock_guard<std::mutex> lock(_mutex);
+      _buffer[index].size = 0;
+      memset(_buffer[index].data, 0, 4092);
+      fseek(history, index * 4096 + sizeof(_index), SEEK_SET);
+      fwrite(&_buffer[index], 4096, 1, history);
+      break;
+    }
+    (index <= 0) ? index = 99 : index--;
+  }
 }

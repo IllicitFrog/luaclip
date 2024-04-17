@@ -7,7 +7,6 @@ luaclip::luaclip(lua_State *Lua) : L(Lua), running(true) {
     lc_error *e = new lc_error{L, "XOpenDisplay failed"};
     sendError(e);
   }
-
   int N = DefaultScreen(display);
   window = XCreateSimpleWindow(display, RootWindow(display, N), 0, 0, 1, 1, 0,
                                BlackPixel(display, N), WhitePixel(display, N));
@@ -28,6 +27,8 @@ void luaclip::search(std::string str) {
   lc_clip *c = new lc_clip{L, ret[0], ret[1], ret[2], ret[3], ret[4]};
   sendClip(c);
 }
+
+void luaclip::remove(std::string str) { clipboard.remove(str); }
 
 void luaclip::recent() {
   std::array<std::string, 5> ret = clipboard.recent();
@@ -110,7 +111,7 @@ void luaclip::run() {
           }
         } else {
           Atom target;
-          char *data;
+          unsigned char *data;
           int format;
           unsigned long n, size;
           XConvertSelection(display, selection, UTF8, XSEL_DATA, window,
@@ -123,12 +124,13 @@ void luaclip::run() {
               XGetWindowProperty(
                   event.xselection.display, event.xselection.requestor,
                   event.xselection.property, 0L, (~0L), 0, AnyPropertyType,
-                  &target, &format, &size, &n, (unsigned char **)&data);
+                  &target, &format, &size, &n, &data);
+
               if (target == UTF8 || target == XA_STRING) {
-                // sloppyfix will deal with this
-                if (size > 4092)
-                  size = 4092;
-                clipboard.insert(std::string(data, size));
+                std::string str((char *)data);
+                if (!str.empty()) {
+                  clipboard.insert(str);
+                }
               }
               XDeleteProperty(display, event.xselection.requestor,
                               event.xselection.property);
@@ -164,6 +166,12 @@ static int luaclip_search(lua_State *L) {
   return 0;
 }
 
+static int luaclip_remove(lua_State *L) {
+  (*reinterpret_cast<luaclip **>(luaL_checkudata(L, 1, LUA_CLIP)))
+      ->remove(luaL_checkstring(L, 2));
+  return 0;
+}
+
 static int luaclip_recent(lua_State *L) {
   (*reinterpret_cast<luaclip **>(luaL_checkudata(L, 1, LUA_CLIP)))->recent();
   return 0;
@@ -182,11 +190,9 @@ static void register_clipboard(lua_State *L) {
   };
 
   static const luaL_Reg funcs[] = {
-      {"search", luaclip_search},
-      {"recent", luaclip_recent},
-      {"daemon", luaclip_daemon},
-      {"select", luaclip_select},
-      {NULL, NULL},
+      {"search", luaclip_search}, {"recent", luaclip_recent},
+      {"daemon", luaclip_daemon}, {"select", luaclip_select},
+      {"remove", luaclip_remove}, {NULL, NULL},
   };
   luaL_newmetatable(L, LUA_CLIP);
   luaL_setfuncs(L, meta, 0);

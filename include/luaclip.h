@@ -32,6 +32,7 @@ public:
   void recent();
   void daemon();
   void select(std::string);
+  void remove(std::string);
 
 private:
   lua_State *L;

@@ -16,7 +16,8 @@ public:
   buffer_t();
   ~buffer_t();
 
-  void insert(const std::string &str);
+  void insert(std::string &str);
+  void remove(std::string &str);
   std::array<std::string, 5> search(const std::string &str);
   std::array<std::string, 5> recent();
 
