@@ -6,6 +6,8 @@
 #include <mutex>
 #include <stdio.h>
 
+#define BUFFER_SIZE 100
+
 typedef struct clip {
   unsigned int size = 0;
   char data[4092] = {0};
@@ -22,7 +24,7 @@ public:
   std::array<std::string, 5> recent();
 
 private:
-  clip _buffer[100];
+  clip _buffer[BUFFER_SIZE];
   unsigned int _index;
   std::string home;
   std::mutex _mutex;
