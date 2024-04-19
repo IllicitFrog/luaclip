@@ -9,7 +9,7 @@ buffer_t::buffer_t() : home(getenv("HOME")) {
     if ((_index > BUFFER_SIZE - 1) || (_index < 0))
       _index = 0;
     int i = 0;
-    while (fread(&_buffer[i], 4096, 1, history) || (i == BUFFER_SIZE)) {
+    while (fread(&_buffer[i], 4096, 1, history) && (i != BUFFER_SIZE)) {
       i++;
     }
   } else {
@@ -40,7 +40,6 @@ std::array<std::string, 5> buffer_t::recent() {
 std::array<std::string, 5> buffer_t::search(const std::string &str) {
   std::array<std::string, 5> ret;
   unsigned int index = _index;
-  printf("searching for %s starting at %d\n", str.c_str(), _index);
   int i = 0;
   while (index != _index + 1) {
     if (strstr(std::string(_buffer[index].data, _buffer[index].size).c_str(),
@@ -52,7 +51,6 @@ std::array<std::string, 5> buffer_t::search(const std::string &str) {
     }
     (index <= 0) ? index = BUFFER_SIZE - 1 : index--;
   }
-  printf("found %d results\n", i);
   return ret;
 }
 
@@ -68,28 +66,20 @@ void buffer_t::insert(std::string &str) {
   fseek(history, 0, SEEK_SET);
   fwrite(&_index, sizeof(_index), 1, history);
   fseek(history, _index * 4096 + sizeof(_index), SEEK_SET);
-  fwrite(&_buffer[_index], _buffer[_index].size, 1, history);
+  fwrite(&_buffer[_index], sizeof(clip), 1, history);
 }
 
 void buffer_t::remove(std::string &str) {
-  if (str == " ") {
-    std::lock_guard<std::mutex> lock(_mutex);
-    _buffer[_index].size = 0;
-    (_index <= 0) ? _index = BUFFER_SIZE - 1 : _index--;
-    fseek(history, 0, SEEK_SET);
-    fwrite(&_index, sizeof(_index), 1, history);
-  } else {
-    unsigned int index = _index;
-    while (index != _index + 1) {
-      if (str == std::string(_buffer[index].data, _buffer[index].size)) {
-        std::lock_guard<std::mutex> lock(_mutex);
-        _buffer[index].size = 0;
-        memset(_buffer[index].data, 0, str.size());
-        fseek(history, index * 4096 + sizeof(_index), SEEK_SET);
-        fwrite(&_buffer[index], str.size(), 1, history);
-        break;
-      }
-      (index <= 0) ? index = BUFFER_SIZE - 1 : index--;
+  unsigned int index = _index;
+  while (index != _index + 1) {
+    if (str == std::string(_buffer[index].data, _buffer[index].size)) {
+      std::lock_guard<std::mutex> lock(_mutex);
+      _buffer[index].size = 0;
+      memset(_buffer[index].data, 0, str.size());
+      fseek(history, index * 4096 + sizeof(_index), SEEK_SET);
+      fwrite(&_buffer[index], sizeof(clip), 1, history);
+      break;
     }
+    (index <= 0) ? index = BUFFER_SIZE - 1 : index--;
   }
 }
