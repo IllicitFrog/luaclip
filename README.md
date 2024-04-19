@@ -2,6 +2,7 @@
 <p align="center"> Text Clipboard manager for Awesome Windows Manager </p>
 <p align="center"> A quick way to retrieve previous clipboard entries inside awesome and quickly set them as the current selection, stores one hundred entries tryiing to keep it light weight and minimal.</p>
 
+![Alt text](luaclip.png)
 <h3>Update - 2024.04.17</h3>
 
 - Cleaned up recent return to not return empty entries
