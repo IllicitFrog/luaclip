@@ -12,7 +12,9 @@
 
 ```lua
 # Will find and replace in buffer/disk
-awesome.connect_signal("clipboard::remove", function(string))
+awesome.connect_signal("clipboard::remove", function(string)
+lclip:remove(string)
+end)
 ```
 
 
