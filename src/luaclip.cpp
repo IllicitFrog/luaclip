@@ -1,5 +1,6 @@
 #include "luaclip.h"
 #include <X11/extensions/Xfixes.h>
+#include "compat-5.3.h"
 
 luaclip::luaclip(lua_State *Lua) : L(Lua), running(true) {
   display = XOpenDisplay(NULL);

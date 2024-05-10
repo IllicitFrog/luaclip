@@ -7,7 +7,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 find_package(PkgConfig REQUIRED)
-find_package(Lua REQUIRED)
+find_package(Lua 5.1 EXACT REQUIRED)
 find_package(Threads REQUIRED)
 find_package(X11 REQUIRED)
 
